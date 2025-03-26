@@ -3,9 +3,8 @@ use anchor_spl::token_interface::{Mint, TokenInterface};
 
 use crate::{Config, ANCHOR_DISCRIMINATOR};
 
-
 #[derive(Accounts)]
-pub struct InitializeConfig<'info>{
+pub struct InitializeConfig<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
     #[account(
@@ -15,7 +14,7 @@ pub struct InitializeConfig<'info>{
         seeds=[b"config", signer.key().as_ref()],
         bump
     )]
-      pub config_account: Account<'info, Config>,
+    pub config_account: Account<'info, Config>,
     #[account(
         init,
         payer=signer,
@@ -24,7 +23,7 @@ pub struct InitializeConfig<'info>{
         mint::freeze_authority=config_account.key()
     )]
     pub mint_a: InterfaceAccount<'info, Mint>,
-       #[account(
+    #[account(
         init,
         payer=signer,
         mint::decimals=6,
@@ -33,10 +32,10 @@ pub struct InitializeConfig<'info>{
     )]
     pub mint_b: InterfaceAccount<'info, Mint>,
     pub token_program: Interface<'info, TokenInterface>,
-    pub system_program: Program<'info, System>
+    pub system_program: Program<'info, System>,
 }
 
-pub fn initialize_config(ctx: Context<InitializeConfig>,seed: u64,fee: u64 )->Result<()>{
+pub fn initialize_config(ctx: Context<InitializeConfig>, seed: u64, fee: u64) -> Result<()> {
     let config_account = &mut ctx.accounts.config_account;
     config_account.fee = fee;
     config_account.locked = false;
