@@ -23,5 +23,8 @@ pub mod amm_project {
     pub fn process_initialize_config(ctx: Context<InitializeConfig>, seed: u64, fee: u64)->Result<()>{
         initialize_config(ctx, seed, fee)
     }
+    pub fn initialize_pool(ctx: Context<InitializePool>)->Result<()>{
+        process_initialize_pool(ctx)
+    }
 }
 

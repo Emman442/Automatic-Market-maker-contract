@@ -20,16 +20,16 @@ pub struct InitializeConfig<'info>{
         init,
         payer=signer,
         mint::decimals=6,
-        mint::authority=signer.key(),
-        mint::freeze_authority=signer.key()
+        mint::authority=config_account.key(),
+        mint::freeze_authority=config_account.key()
     )]
     pub mint_a: InterfaceAccount<'info, Mint>,
        #[account(
         init,
         payer=signer,
         mint::decimals=6,
-        mint::authority=signer.key(),
-        mint::freeze_authority=signer.key()
+        mint::authority=config_account.key(),
+        mint::freeze_authority=config_account.key()
     )]
     pub mint_b: InterfaceAccount<'info, Mint>,
     pub token_program: Interface<'info, TokenInterface>,
