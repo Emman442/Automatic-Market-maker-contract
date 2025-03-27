@@ -8,29 +8,36 @@ use crate::{Config, Pool, ANCHOR_DISCRIMINATOR};
 pub struct InitializePool<'info>{
     #[account(mut)]
     pub signer: Signer<'info>,
-    #[account(
-        mut,
-        constraint = mint_a.key() == config_account.mint_a,  
+      #[account(
+        init,
+        payer=signer,
+        mint::decimals=6,
+        mint::authority=config_account.key(),
+        mint::freeze_authority=config_account.key()
     )]
     pub mint_a: InterfaceAccount<'info, Mint>,
-
-    #[account(
-        mut,
-        constraint = mint_b.key() == config_account.mint_b,  
+       #[account(
+        init,
+        payer=signer,
+        mint::decimals=6,
+        mint::authority=config_account.key(),
+        mint::freeze_authority=config_account.key()
     )]
     pub mint_b: InterfaceAccount<'info, Mint>,
     #[account(
         init,
         payer=signer,
         associated_token::mint=mint_a,
-        associated_token::authority=pool
+        associated_token::authority=pool,
+        associated_token::token_program=token_program
     )]
      pub vault_a: InterfaceAccount<'info, TokenAccount>,
      #[account(
         init,
         payer=signer,
         associated_token::mint=mint_b,
-        associated_token::authority=pool
+        associated_token::authority=pool,
+        associated_token::token_program=token_program
     )]
     pub vault_b: InterfaceAccount<'info, TokenAccount>,
     #[account(
@@ -42,7 +49,10 @@ pub struct InitializePool<'info>{
     )]
     
     pub pool: Account<'info, Pool>,
-    #[account(init, payer=signer, space=ANCHOR_DISCRIMINATOR + Config::INIT_SPACE, seeds= [b"config", signer.key().as_ref()], bump)]
+    #[account(
+        seeds= [b"config", signer.key().as_ref()], 
+        bump
+    )]
     pub config_account: Account<'info, Config>,
     #[account(
         init,
@@ -60,6 +70,8 @@ pub fn process_initialize_pool(ctx: Context<InitializePool>)->Result<()>{
     let pool = &mut ctx.accounts.pool;
     pool.vault_a = ctx.accounts.vault_a.key();
     pool.vault_b = ctx.accounts.vault_b.key();
+    pool.mint_a = ctx.accounts.mint_a.key();
+    pool.mint_b = ctx.accounts.mint_b.key();
     pool.lp_supply=0;
     pool.lp_mint=ctx.accounts.lp_mint.key();
     pool.bump=ctx.bumps.pool;

@@ -16,22 +16,6 @@ pub struct InitializeConfig<'info>{
         bump
     )]
       pub config_account: Account<'info, Config>,
-    #[account(
-        init,
-        payer=signer,
-        mint::decimals=6,
-        mint::authority=config_account.key(),
-        mint::freeze_authority=config_account.key()
-    )]
-    pub mint_a: InterfaceAccount<'info, Mint>,
-       #[account(
-        init,
-        payer=signer,
-        mint::decimals=6,
-        mint::authority=config_account.key(),
-        mint::freeze_authority=config_account.key()
-    )]
-    pub mint_b: InterfaceAccount<'info, Mint>,
     pub token_program: Interface<'info, TokenInterface>,
     pub system_program: Program<'info, System>
 }
@@ -40,8 +24,6 @@ pub fn initialize_config(ctx: Context<InitializeConfig>,seed: u64,fee: u64 )->Re
     let config_account = &mut ctx.accounts.config_account;
     config_account.fee = fee;
     config_account.locked = false;
-    config_account.mint_a = ctx.accounts.mint_a.key();
-    config_account.mint_b = ctx.accounts.mint_b.key();
     config_account.seed = seed;
     Ok(())
 }
