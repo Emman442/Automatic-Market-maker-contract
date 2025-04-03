@@ -6,6 +6,9 @@ import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
   createMint,
   getAssociatedTokenAddress,
+  mintTo,
+  getOrCreateAssociatedTokenAccount,
+  createAssociatedTokenAccountInstruction,
 } from "@solana/spl-token";
 import { PublicKey, Keypair } from "@solana/web3.js";
 
@@ -64,17 +67,11 @@ describe("amm-project", () => {
       [Buffer.from("pool"), mintA.toBuffer(), mintB.toBuffer()],
       program.programId
     );
+    console.log("pool pda pool", poolPDA.toBase58())
   
 
     const vaultA = await getAssociatedTokenAddress(mintA, poolPDA, true);
     const vaultB = await getAssociatedTokenAddress(mintB, poolPDA, true);
-
-    console.log("Mint A", mintA.toBase58());
-    console.log("Mint B", mintB.toBase58());
-    console.log("LP Mint Keypair", lpMint.toBase58());
-    console.log("Vault A", vaultA.toBase58());
-    console.log("Vault B", vaultB.toBase58());
-    console.log("Config PDA",configPDA )
 
     await program.methods
       .initializePool()
@@ -106,7 +103,6 @@ describe("amm-project", () => {
       program.programId
     );
 
-
     const vaultA = await getAssociatedTokenAddress(mintA, poolPDA, true);
     const vaultB = await getAssociatedTokenAddress(mintB, poolPDA, true);
 
@@ -123,4 +119,104 @@ describe("amm-project", () => {
       pool: poolPDA,
     }).rpc
   })
+
+  it("swap", async()=>{
+
+   const  mintA = await createTokenMint(provider, wallet.publicKey);
+    const mintB = await createTokenMint(provider, wallet.publicKey);
+
+    console.log("Mint A swap", mintA.toBase58())
+    const userTokenA = await mintToUser(provider, mintA, wallet.publicKey, 10000);
+    const userTokenB = await mintToUser(provider, mintB, wallet.publicKey, 10000);
+    
+    const [configPDA, configBump] =  await PublicKey.findProgramAddress(
+      [Buffer.from("config"), wallet.publicKey.toBuffer()],
+      program.programId
+    );
+    const [poolPDA, poolBump] =  await PublicKey.findProgramAddress(
+      [Buffer.from("pool"), mintA.toBuffer(), mintB.toBuffer()],
+      program.programId
+    );
+
+    const vaultA = await getAssociatedTokenAddress(mintA, poolPDA, true);
+    const vaultB = await getAssociatedTokenAddress(mintB, poolPDA, true);
+
+    // const vaultABalance = await provider.connection.getTokenAccountBalance(vaultA);
+    // const vaultBBalance = await provider.connection.getTokenAccountBalance(vaultB);
+    // console.log("Vault A Balance:", vaultABalance.value.amount);
+    // console.log("Vault B Balance:", vaultBBalance.value.amount);
+
+
+    const tx = new anchor.web3.Transaction();
+    tx.add(
+      createAssociatedTokenAccountInstruction(
+        wallet.publicKey, // Payer
+        vaultA, // New token account
+        poolPDA, // Owner (PDA of the AMM)
+        mintA 
+      ),
+      createAssociatedTokenAccountInstruction(
+        wallet.publicKey, // Payer
+        vaultB, // New token account
+        poolPDA, // Owner (PDA of the AMM)
+        mintB // Mint
+      )
+    );
+
+    await provider.sendAndConfirm(tx);
+    console.log("Vaults created ✅");
+
+    const swapTx = await program.methods.swap(new anchor.BN(500)).accounts({
+      signer: wallet.publicKey,
+      mintA,
+      mintB,
+      vaultA,
+      vaultB,
+      userTokenA,
+      userTokenB,
+      tokenProgram: TOKEN_PROGRAM_ID,
+      //@ts-ignore
+      systemProgram: anchor.web3.SystemProgram.programId,
+      configAccount: configPDA,
+      pool: poolPDA,
+    }).rpc()
+
+    console.log("Swap Tx", swapTx)
+  })
 });
+
+
+async function createTokenMint(provider: anchor.AnchorProvider, authority: PublicKey) {
+  return await createMint(
+    provider.connection,
+    provider.wallet.payer, // Payer of fees
+    authority, // Mint authority (wallet)
+    null, // Freeze authority (optional)
+    9 // Decimals
+  );
+}
+
+async function mintToUser(
+  provider: anchor.AnchorProvider,
+  mint: PublicKey,
+  user: PublicKey,
+  amount: number
+) {
+  const userTokenAccount = await getOrCreateAssociatedTokenAccount(
+    provider.connection,
+    provider.wallet.payer,
+    mint,
+    user
+  );
+
+  await mintTo(
+    provider.connection,
+    provider.wallet.payer,
+    mint,
+    userTokenAccount.address,
+    provider.wallet.publicKey, // Authority
+    amount
+  );
+
+  return userTokenAccount.address;
+}

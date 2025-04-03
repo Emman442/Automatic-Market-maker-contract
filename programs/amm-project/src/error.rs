@@ -6,5 +6,8 @@ pub enum AmmError{
     InvalidAmmount,
 
     #[msg("Insufficient Liquidity")]
-    InsufficientLiquidity
+    InsufficientLiquidity,
+
+    #[msg("Insufficient Output")]
+    InsufficientOutput
 }

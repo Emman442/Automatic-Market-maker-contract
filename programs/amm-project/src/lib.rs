@@ -15,6 +15,9 @@ pub use add_liquidity::*;
 pub mod error;
 pub use error::*;
 
+pub mod swap;
+pub use swap::*;
+
 pub mod initialize;
 pub use initialize::*;
 declare_id!("G3MkxkWxuWpZdQGFRdZRRWGaZ6PndDjEsdF6E1citqgG");
@@ -32,6 +35,9 @@ pub mod amm_project {
     }
     pub fn add_liquidity(ctx: Context<AddLiquidity>, amount_a: u64, amount_b: u64)-> Result<()>{
         process_add_liquidity(ctx, amount_a, amount_b)
+    }
+    pub fn swap(ctx: Context<Swap>, amount_in: u64)->Result<()>{
+        process_swap(ctx, amount_in)
     }
 }
 
