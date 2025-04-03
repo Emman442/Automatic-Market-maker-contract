@@ -5,6 +5,8 @@ use anchor_lang::prelude::*;
 pub struct Pool {
     pub vault_a: Pubkey,
     pub vault_b: Pubkey,
+    pub vault_a_reserve: u64,
+    pub vault_b_reserve: u64,
     pub mint_a: Pubkey,
     pub mint_b: Pubkey,
     pub lp_supply: u64,
