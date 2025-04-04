@@ -105,7 +105,8 @@ describe("amm-project", () => {
 
     const vaultA = await getAssociatedTokenAddress(mintA, poolPDA, true);
     const vaultB = await getAssociatedTokenAddress(mintB, poolPDA, true);
-
+    const userTokenA = await mintToUser(provider, mintA, wallet.publicKey, 10000);
+    const userTokenB = await mintToUser(provider, mintB, wallet.publicKey, 10000);
     const tx = await program.methods.addLiquidity(new anchor.BN(1000), new anchor.BN(4000)).accounts({
       signer: wallet.publicKey,
       mintA: mintA,
@@ -115,15 +116,19 @@ describe("amm-project", () => {
       vaultB: vaultB,
       tokenProgram: TOKEN_PROGRAM_ID,
       //@ts-ignore
+      userTokenA,
+      userTokenB,
       systemProgram: anchor.web3.SystemProgram.programId,
       pool: poolPDA,
-    }).rpc
+    }).rpc({skipPreflight: true})
   })
 
   it("swap", async()=>{
+    const mintA = mintAKeypair.publicKey;
+    const mintB = mintBKeypair.publicKey;
 
-   const  mintA = await createTokenMint(provider, wallet.publicKey);
-    const mintB = await createTokenMint(provider, wallet.publicKey);
+  //  const  mintA = await createTokenMint(provider, wallet.publicKey);
+  //   const mintB = await createTokenMint(provider, wallet.publicKey);
 
     console.log("Mint A swap", mintA.toBase58())
     const userTokenA = await mintToUser(provider, mintA, wallet.publicKey, 10000);
