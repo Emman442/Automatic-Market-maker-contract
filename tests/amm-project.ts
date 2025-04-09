@@ -19,18 +19,24 @@ describe("amm-project", () => {
   const program = anchor.workspace.AmmProject as Program<AmmProject>;
   
   // Generate fresh keypairs for each test
-  let mintAKeypair: Keypair;
-  let mintBKeypair: Keypair;
-  let lpMintKeypair: Keypair;
+  let mintAKp: Keypair;
+  let mintBKp: Keypair;
+  let lpMintKp: Keypair;
+  let mintA: PublicKey;
+  let mintB: PublicKey;
+  let lpMint: PublicKey;
 
- 
+  before(async () => {
+    mintAKp = Keypair.generate();
+    mintBKp = Keypair.generate();
+    lpMintKp = Keypair.generate();
 
-  beforeEach(() => {
-    // Reset keypairs before each test to ensure unique addresses
-    mintAKeypair = Keypair.generate();
-    mintBKeypair = Keypair.generate();
-    lpMintKeypair = Keypair.generate();
+
+    mintA = await createTokenMintWithKeypair(provider, mintAKp, provider.wallet.publicKey);
+    mintB = await createTokenMintWithKeypair(provider, mintBKp, provider.wallet.publicKey);
+    lpMint = await createTokenMintWithKeypair(provider, lpMintKp, provider.wallet.publicKey);
   });
+
 
   it("Initialize config", async () => {
     const [configPDA, configBump] = PublicKey.findProgramAddressSync(
@@ -52,14 +58,7 @@ describe("amm-project", () => {
   });
 
   it("Initialize pool", async () => {
-    // Create mints with fresh keypairs
-
-    const mintA = mintAKeypair.publicKey;
-    const mintB = mintBKeypair.publicKey;
-    const lpMint = lpMintKeypair.publicKey;
-
-    // Derive PDAs
-    const [configPDA, configBump] = await PublicKey.findProgramAddress(
+    const [configPDA] = await PublicKey.findProgramAddress(
       [Buffer.from("config"), wallet.publicKey.toBuffer()],
       program.programId
     );
@@ -67,21 +66,37 @@ describe("amm-project", () => {
       [Buffer.from("pool"), mintA.toBuffer(), mintB.toBuffer()],
       program.programId
     );
-    console.log("pool pda pool", poolPDA.toBase58())
-  
 
     const vaultA = await getAssociatedTokenAddress(mintA, poolPDA, true);
     const vaultB = await getAssociatedTokenAddress(mintB, poolPDA, true);
+
+    // // Ensure vaults are created before pool initialization
+    // const tx = new anchor.web3.Transaction();
+    // tx.add(
+    //   createAssociatedTokenAccountInstruction(
+    //     wallet.publicKey,
+    //     vaultA,
+    //     poolPDA,
+    //     mintA
+    //   ),
+    //   createAssociatedTokenAccountInstruction(
+    //     wallet.publicKey,
+    //     vaultB,
+    //     poolPDA,
+    //     mintB
+    //   )
+    // );
+    // await provider.sendAndConfirm(tx);
 
     await program.methods
       .initializePool()
       .accounts({
         signer: wallet.publicKey,
-        mintA: mintA,
-        mintB: mintB,
+        mintA,
+        mintB,
         //@ts-ignore
-        vaultA: vaultA,
-        vaultB: vaultB,
+        vaultA,
+        vaultB,
         pool: poolPDA,
         configAccount: configPDA,
         lpMint: lpMint,
@@ -89,15 +104,13 @@ describe("amm-project", () => {
         systemProgram: anchor.web3.SystemProgram.programId,
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
       })
-      .signers([mintAKeypair, mintBKeypair, lpMintKeypair])
-      .rpc();
+      .signers([mintAKp, mintBKp, lpMintKp])
+      .rpc({ skipPreflight: true });
   });
 
-  it("deposit liquidity",async ()=>{
-    const mintA = mintAKeypair.publicKey;
-    const mintB = mintBKeypair.publicKey;
-    const lpMint = lpMintKeypair.publicKey;
 
+  it("deposit liquidity",async ()=>{
+    const userLpToken = await getAssociatedTokenAddress(lpMint, wallet.publicKey);
     const [poolPDA, poolBump] = await PublicKey.findProgramAddress(
       [Buffer.from("pool"), mintA.toBuffer(), mintB.toBuffer()],
       program.programId
@@ -106,29 +119,25 @@ describe("amm-project", () => {
     const vaultA = await getAssociatedTokenAddress(mintA, poolPDA, true);
     const vaultB = await getAssociatedTokenAddress(mintB, poolPDA, true);
     const userTokenA = await mintToUser(provider, mintA, wallet.publicKey, 10000);
-    const userTokenB = await mintToUser(provider, mintB, wallet.publicKey, 10000);
+    const userTokenB = await mintToUser(provider, mintB,wallet.publicKey, 10000);
     const tx = await program.methods.addLiquidity(new anchor.BN(1000), new anchor.BN(4000)).accounts({
       signer: wallet.publicKey,
-      mintA: mintA,
-      mintB: mintB,
-      lpMint: lpMint,
+      mintA,
+      mintB,
+      lpMint,
       vaultA: vaultA,
       vaultB: vaultB,
       tokenProgram: TOKEN_PROGRAM_ID,
-      //@ts-ignore
+      userLpToken,
       userTokenA,
       userTokenB,
+      //@ts-ignore
       systemProgram: anchor.web3.SystemProgram.programId,
       pool: poolPDA,
     }).rpc({skipPreflight: true})
   })
 
   it("swap", async()=>{
-    const mintA = mintAKeypair.publicKey;
-    const mintB = mintBKeypair.publicKey;
-
-  //  const  mintA = await createTokenMint(provider, wallet.publicKey);
-  //   const mintB = await createTokenMint(provider, wallet.publicKey);
 
     console.log("Mint A swap", mintA.toBase58())
     const userTokenA = await mintToUser(provider, mintA, wallet.publicKey, 10000);
@@ -158,7 +167,7 @@ describe("amm-project", () => {
         wallet.publicKey, // Payer
         vaultA, // New token account
         poolPDA, // Owner (PDA of the AMM)
-        mintA 
+        mintA
       ),
       createAssociatedTokenAccountInstruction(
         wallet.publicKey, // Payer
@@ -224,4 +233,20 @@ async function mintToUser(
   );
 
   return userTokenAccount.address;
+}
+
+async function createTokenMintWithKeypair(
+  provider: anchor.AnchorProvider,
+  keypair: Keypair,
+  authority: PublicKey
+): Promise<PublicKey> {
+  await createMint(
+    provider.connection,
+    provider.wallet.payer,
+    authority,
+    null,
+    9,
+    keypair
+  );
+  return keypair.publicKey;
 }
