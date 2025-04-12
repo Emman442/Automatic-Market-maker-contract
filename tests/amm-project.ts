@@ -1,6 +1,6 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
-import { AmmProject} from "../target/types/amm_project";
+import { AmmProject } from "../target/types/amm_project";
 import {
   TOKEN_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -17,40 +17,47 @@ describe("amm-project", () => {
   anchor.setProvider(provider);
   const wallet = provider.wallet as anchor.Wallet;
   const program = anchor.workspace.AmmProject as Program<AmmProject>;
-  
+
   // Generate fresh keypairs for each test
-  let mintAKp: Keypair;
-  let mintBKp: Keypair;
-  let lpMintKp: Keypair;
-  let mintA: PublicKey;
-  let mintB: PublicKey;
-  let lpMint: PublicKey;
+  // let mintAKp: Keypair;
+  // let mintBKp: Keypair;
+  // let lpMintKp: Keypair;
+  // let mintA: PublicKey;
+  // let mintB: PublicKey;
+  // let lpMint: PublicKey;
 
-  before(async () => {
-    mintAKp = Keypair.generate();
-    mintBKp = Keypair.generate();
-    lpMintKp = Keypair.generate();
+  // before(async () => {
+  //   mintAKp = Keypair.generate();
+  //   mintBKp = Keypair.generate();
+  //   lpMintKp = Keypair.generate();
 
+  //   mintA = await createTokenMintWithKeypair(provider, mintAKp, provider.wallet.publicKey);
+  //   mintB = await createTokenMintWithKeypair(provider, mintBKp, provider.wallet.publicKey);
+  //   lpMint = await createTokenMintWithKeypair(provider, lpMintKp, provider.wallet.publicKey);
+  // });
 
-    mintA = await createTokenMintWithKeypair(provider, mintAKp, provider.wallet.publicKey);
-    mintB = await createTokenMintWithKeypair(provider, mintBKp, provider.wallet.publicKey);
-    lpMint = await createTokenMintWithKeypair(provider, lpMintKp, provider.wallet.publicKey);
-  });
+  let configPDA: PublicKey;
+  let poolPDA: PublicKey;
 
+  const mintA = anchor.web3.Keypair.generate();
+  const mintB = anchor.web3.Keypair.generate();
+  const lpMint = anchor.web3.Keypair.generate();
+
+  let vaultA: PublicKey;
+  let vaultB: PublicKey;
 
   it("Initialize config", async () => {
-    const [configPDA, configBump] = PublicKey.findProgramAddressSync(
+    [configPDA] = PublicKey.findProgramAddressSync(
       [Buffer.from("config"), wallet.publicKey.toBuffer()],
       program.programId
     );
     await program.methods
       .processInitializeConfig(new anchor.BN(42), new anchor.BN(4)) // Adjust if this instruction takes args
-      .accounts({
-                tokenProgram: TOKEN_PROGRAM_ID,
-                signer: wallet.publicKey,
-                //@ts-ignore
-                configAccount: configPDA,
-                systemProgram: anchor.web3.SystemProgram.programId,
+      .accountsStrict({
+        tokenProgram: TOKEN_PROGRAM_ID,
+        signer: wallet.publicKey,
+        configAccount: configPDA,
+        systemProgram: anchor.web3.SystemProgram.programId,
       })
       .rpc();
 
@@ -58,9 +65,45 @@ describe("amm-project", () => {
   });
 
   it("Initialize pool", async () => {
-    const [configPDA] = await PublicKey.findProgramAddress(
-      [Buffer.from("config"), wallet.publicKey.toBuffer()],
+    [poolPDA] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("pool"),
+        mintA.publicKey.toBuffer(),
+        mintB.publicKey.toBuffer(),
+      ],
       program.programId
+    );
+
+    vaultA = await getAssociatedTokenAddress(mintA.publicKey, poolPDA, true);
+    vaultB = await getAssociatedTokenAddress(mintB.publicKey, poolPDA, true);
+
+    try {
+      await program.methods
+        .initializePool()
+        .accountsStrict({
+          signer: wallet.publicKey,
+          mintA: mintA.publicKey,
+          mintB: mintB.publicKey,
+          vaultA,
+          vaultB,
+          pool: poolPDA,
+          configAccount: configPDA,
+          lpMint: lpMint.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: anchor.web3.SystemProgram.programId,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        })
+        .signers([mintA, mintB, lpMint])
+        .rpc();
+    } catch (e) {
+      console.log(`an error occured: ${e}`);
+    }
+  });
+
+  it("deposit liquidity", async () => {
+    const userLpToken = await getAssociatedTokenAddress(
+      lpMint,
+      wallet.publicKey
     );
     const [poolPDA, poolBump] = await PublicKey.findProgramAddress(
       [Buffer.from("pool"), mintA.toBuffer(), mintB.toBuffer()],
@@ -69,85 +112,58 @@ describe("amm-project", () => {
 
     const vaultA = await getAssociatedTokenAddress(mintA, poolPDA, true);
     const vaultB = await getAssociatedTokenAddress(mintB, poolPDA, true);
-
-    // // Ensure vaults are created before pool initialization
-    // const tx = new anchor.web3.Transaction();
-    // tx.add(
-    //   createAssociatedTokenAccountInstruction(
-    //     wallet.publicKey,
-    //     vaultA,
-    //     poolPDA,
-    //     mintA
-    //   ),
-    //   createAssociatedTokenAccountInstruction(
-    //     wallet.publicKey,
-    //     vaultB,
-    //     poolPDA,
-    //     mintB
-    //   )
-    // );
-    // await provider.sendAndConfirm(tx);
-
-    await program.methods
-      .initializePool()
+    const userTokenA = await mintToUser(
+      provider,
+      mintA,
+      wallet.publicKey,
+      10000
+    );
+    const userTokenB = await mintToUser(
+      provider,
+      mintB,
+      wallet.publicKey,
+      10000
+    );
+    const tx = await program.methods
+      .addLiquidity(new anchor.BN(1000), new anchor.BN(4000))
       .accounts({
         signer: wallet.publicKey,
         mintA,
         mintB,
-        //@ts-ignore
-        vaultA,
-        vaultB,
-        pool: poolPDA,
-        configAccount: configPDA,
-        lpMint: lpMint,
+        lpMint,
+        vaultA: vaultA,
+        vaultB: vaultB,
         tokenProgram: TOKEN_PROGRAM_ID,
+        userLpToken,
+        userTokenA,
+        userTokenB,
+        //@ts-ignore
         systemProgram: anchor.web3.SystemProgram.programId,
-        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        pool: poolPDA,
       })
-      .signers([mintAKp, mintBKp, lpMintKp])
       .rpc({ skipPreflight: true });
   });
 
-
-  it("deposit liquidity",async ()=>{
-    const userLpToken = await getAssociatedTokenAddress(lpMint, wallet.publicKey);
-    const [poolPDA, poolBump] = await PublicKey.findProgramAddress(
-      [Buffer.from("pool"), mintA.toBuffer(), mintB.toBuffer()],
-      program.programId
+  it("swap", async () => {
+    console.log("Mint A swap", mintA.toBase58());
+    const userTokenA = await mintToUser(
+      provider,
+      mintA,
+      wallet.publicKey,
+      10000
+    );
+    const userTokenB = await mintToUser(
+      provider,
+      mintB,
+      wallet.publicKey,
+      10000
     );
 
-    const vaultA = await getAssociatedTokenAddress(mintA, poolPDA, true);
-    const vaultB = await getAssociatedTokenAddress(mintB, poolPDA, true);
-    const userTokenA = await mintToUser(provider, mintA, wallet.publicKey, 10000);
-    const userTokenB = await mintToUser(provider, mintB,wallet.publicKey, 10000);
-    const tx = await program.methods.addLiquidity(new anchor.BN(1000), new anchor.BN(4000)).accounts({
-      signer: wallet.publicKey,
-      mintA,
-      mintB,
-      lpMint,
-      vaultA: vaultA,
-      vaultB: vaultB,
-      tokenProgram: TOKEN_PROGRAM_ID,
-      userLpToken,
-      userTokenA,
-      userTokenB,
-      //@ts-ignore
-      systemProgram: anchor.web3.SystemProgram.programId,
-      pool: poolPDA,
-    }).rpc({skipPreflight: true})
-  })
-
-  it("swap", async()=>{
-
-    console.log("Mint A swap", mintA.toBase58())
-    const userTokenA = await mintToUser(provider, mintA, wallet.publicKey, 10000);
-    const userTokenB = await mintToUser(provider, mintB, wallet.publicKey, 10000);
-    
-    const [configPDA, configBump] =  await PublicKey.findProgramAddress(
+    const [configPDA, configBump] = await PublicKey.findProgramAddress(
       [Buffer.from("config"), wallet.publicKey.toBuffer()],
       program.programId
     );
-    const [poolPDA, poolBump] =  await PublicKey.findProgramAddress(
+    const [poolPDA, poolBump] = await PublicKey.findProgramAddress(
       [Buffer.from("pool"), mintA.toBuffer(), mintB.toBuffer()],
       program.programId
     );
@@ -159,7 +175,6 @@ describe("amm-project", () => {
     // const vaultBBalance = await provider.connection.getTokenAccountBalance(vaultB);
     // console.log("Vault A Balance:", vaultABalance.value.amount);
     // console.log("Vault B Balance:", vaultBBalance.value.amount);
-
 
     const tx = new anchor.web3.Transaction();
     tx.add(
@@ -180,27 +195,32 @@ describe("amm-project", () => {
     await provider.sendAndConfirm(tx);
     console.log("Vaults created ✅");
 
-    const swapTx = await program.methods.swap(new anchor.BN(500)).accounts({
-      signer: wallet.publicKey,
-      mintA,
-      mintB,
-      vaultA,
-      vaultB,
-      userTokenA,
-      userTokenB,
-      tokenProgram: TOKEN_PROGRAM_ID,
-      //@ts-ignore
-      systemProgram: anchor.web3.SystemProgram.programId,
-      configAccount: configPDA,
-      pool: poolPDA,
-    }).rpc()
+    const swapTx = await program.methods
+      .swap(new anchor.BN(500))
+      .accounts({
+        signer: wallet.publicKey,
+        mintA,
+        mintB,
+        vaultA,
+        vaultB,
+        userTokenA,
+        userTokenB,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        //@ts-ignore
+        systemProgram: anchor.web3.SystemProgram.programId,
+        configAccount: configPDA,
+        pool: poolPDA,
+      })
+      .rpc();
 
-    console.log("Swap Tx", swapTx)
-  })
+    console.log("Swap Tx", swapTx);
+  });
 });
 
-
-async function createTokenMint(provider: anchor.AnchorProvider, authority: PublicKey) {
+async function createTokenMint(
+  provider: anchor.AnchorProvider,
+  authority: PublicKey
+) {
   return await createMint(
     provider.connection,
     provider.wallet.payer, // Payer of fees

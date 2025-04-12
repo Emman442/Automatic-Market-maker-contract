@@ -47,7 +47,6 @@ pub struct InitializePool<'info>{
         seeds=[b"pool", mint_a.key().as_ref(), mint_b.key().as_ref()],
         bump
     )]
-    
     pub pool: Account<'info, Pool>,
     #[account(
         seeds= [b"config", signer.key().as_ref()], 
